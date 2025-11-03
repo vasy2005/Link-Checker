@@ -87,11 +87,10 @@ class CheckVirusTotal:
     def run(self):
         url = self.__url
         results = self.__scan_url(url)
+        # report = self.__vt_report(results)
+        # print(report)
         print(results)
-        report = self.__vt_report(results)
-        print(report)
-
-        return results, report
+        return results
 
 
 if __name__ == '__main__':
