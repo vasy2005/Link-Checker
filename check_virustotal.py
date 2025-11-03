@@ -96,7 +96,7 @@ class CheckVirusTotal:
 if __name__ == '__main__':
     object = CheckVirusTotal('br-icloud.com.br')
     object.run()
-    
+
 
 
 
