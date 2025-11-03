@@ -49,7 +49,7 @@ class CheckVirusTotal:
 
         return final_results
     
-    def __print_format(self, results):
+    def print_format(self, results):
         output = f'URL: {results['url']}\n'
         output += f'{results['engine_stats']['malicious']}/98 security vendors flagged this URL as malicious\n'
         output += f'Summary of engine results:\n  Malicious: {results['engine_stats']['malicious']}/98\n  Suspicious: {results['engine_stats']['suspicious']}/98\n  Undetected: {results['engine_stats']['undetected']}/98\n  Harmless: {results['engine_stats']['harmless']}/98\n'
@@ -69,11 +69,10 @@ class CheckVirusTotal:
     def run(self):
         url = self.__url
         results = self.__scan_url(url)
-        print_output = self.__print_format(results)
-        print(print_output)
-
-        return results, print_output
-
+        # print_output = self.__print_format(results)
+        # print(print_output)
+        print(results)
+        return results
 
 if __name__ == '__main__':
     object = CheckVirusTotal('br-icloud.com.br')
