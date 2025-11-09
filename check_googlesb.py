@@ -2,19 +2,18 @@ import requests
 from dotenv import load_dotenv
 import json
 import os
+import hashlib
 
 from url_normalize import url_normalize
 
 class CheckGoogleSB:
-    def __init__(self, url: str):
+    def __init__(self):
         load_dotenv()
         self.__api_key = os.getenv('GOOGLESB_API_KEY')
-        self.__url = url
 
     def __scan_url(self, url):
-        url = url_normalize(url)
-
         api_url = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
+
         final_results = {}
         final_results['ok'] = 1
         final_results['error'] = ''
@@ -38,7 +37,7 @@ class CheckGoogleSB:
                     "threatEntryTypes": ["URL"],
                     "threatEntries": [{'url': url}]
                 }
-        }
+                }
 
         try:
             params = {'key': self.__api_key}
@@ -50,28 +49,34 @@ class CheckGoogleSB:
                 final_results['ok'] = 0
                 final_results['error'] = response.text
                 return final_results
-            
-            result = response.json()
-            if 'matches' in result:
-                match = result['matches'][0]
-                final_results['threat_type'] = match['threatType']
-                final_results['url'] = match['threat']['url']
-                final_results['raw_response'] = match
-            else:
-                final_results['error'] = 'No malware found'
 
-            return final_results
         except Exception as e:
             final_results['ok'] = 0
             final_results['error'] = str(e)
             return final_results
+        
+        result = response.json()
+        if 'matches' in result:
+            match = result['matches'][0]
+            final_results['threat_type'] = match['threatType']
+            final_results['url'] = match['threat']['url']
+            final_results['raw_response'] = match
+        else:
+            final_results['error'] = 'No malware found'
+        return final_results
     
-    def run(self):
-        results = self.__scan_url(self.__url)
+    def run(self, url: str, path: str = None) -> None:
+        results = self.__scan_url(url)
 
-        return results
+        if path != None:
+            file_name = f'googlesb_raw_output_{hashlib.md5(url.encode()).hexdigest()}.json'
+            file_path = os.path.join(path, file_name)
+            with open(file_path, 'w') as file:
+                file.write(json.dumps(results))
+
+
     
 if __name__ == '__main__':
-    object = CheckGoogleSB('http://br-icloud.com.br')
-    object.run()
+    object = CheckGoogleSB()
+    print(object.run('https://salator.es/login/', './'))
 

@@ -2,19 +2,23 @@ import vt
 from vt.error import APIError
 import os
 import time
-from dotenv import load_dotenv
+import json
+import hashlib
 
+from dotenv import load_dotenv
 from url_normalize import url_normalize
 
 class CheckVirusTotal:
-    def __init__(self, url: str):
+    def __init__(self):
         load_dotenv()
         self.__api_key = os.getenv('VIRUSTOTAL_API_KEY')
-        self.__url = url
 
     def __scan_url(self, url):
-        url = url_normalize(url)
         client = vt.Client(self.__api_key)
+
+        final_results = {}
+        final_results['ok'] = 1
+        final_results['error'] = ''
 
         try:
             
@@ -40,9 +44,10 @@ class CheckVirusTotal:
             
             client.close()
         except Exception as e:
-            print(e)
+            final_results['ok'] = 0
+            final_results['error'] = e
             client.close()
-            return None
+            return final_results
 
         final_results = {}
         final_results['engine_stats'] = url_object.last_analysis_stats # How many engines found the link to be malicious/suspicious/undetected/harmless/timeout
@@ -84,18 +89,20 @@ class CheckVirusTotal:
 
         return output
 
-    def run(self):
-        url = self.__url
+    def run(self, url: str, path: str) -> None:
         results = self.__scan_url(url)
-        # report = self.__vt_report(results)
-        # print(report)
+        
+        if path != None:
+            file_name = f'virustotal_output_{hashlib.md5(url.encode()).hexdigest()}.json'
+            file_path = os.path.join(path, file_name)
+            with open(file_path, 'w') as file:
+                file.write(json.dumps(results, default=str))
         print(results)
-        return results
 
 
 if __name__ == '__main__':
-    object = CheckVirusTotal('br-icloud.com.br')
-    object.run()
+    object = CheckVirusTotal()
+    print(object.run('fantasticfilms.ru', './'))
 
 
 
