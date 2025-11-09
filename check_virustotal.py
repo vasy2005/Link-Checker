@@ -1,4 +1,5 @@
 import vt
+from vt.object import WhistleBlowerDict
 from vt.error import APIError
 import os
 import time
@@ -12,6 +13,23 @@ class CheckVirusTotal:
     def __init__(self):
         load_dotenv()
         self.__api_key = os.getenv('VIRUSTOTAL_API_KEY')
+
+    def __into_dict(self, object):
+        if isinstance(object, WhistleBlowerDict) or isinstance(object, dict):
+            result = {}
+            object = dict(object)
+            for key in object.keys():
+                result[key] = self.__into_dict(object[key])
+            return result
+        
+        if isinstance(object, list):
+            result = []
+            for item in object:
+                result.append(self.__into_dict(item))
+            return result
+        
+        return object
+            
 
     def __scan_url(self, url):
         client = vt.Client(self.__api_key)
@@ -69,8 +87,8 @@ class CheckVirusTotal:
             final_results['verdict'] = 'harmless'
 
         # reputation: > 1000 very good reputation, 0-1000 neutral, < 0 suspicious
-
-        return final_results
+        
+        return self.__into_dict(final_results)
     
     def __vt_report(self, results):
         output = f'URL: {results['url']}\n'
@@ -96,13 +114,14 @@ class CheckVirusTotal:
             file_name = f'virustotal_output_{hashlib.md5(url.encode()).hexdigest()}.json'
             file_path = os.path.join(path, file_name)
             with open(file_path, 'w') as file:
-                file.write(json.dumps(results, default=str))
-        print(results)
+                file.write(json.dumps(results))
+
+        return results
 
 
-if __name__ == '__main__':
-    object = CheckVirusTotal()
-    print(object.run('fantasticfilms.ru', './'))
+# if __name__ == '__main__':
+#     object = CheckVirusTotal()
+#     print(object.run(url_normalize('https://br-icloud.com.br'), './'))
 
 
 

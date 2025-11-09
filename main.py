@@ -1,6 +1,7 @@
 import os
 from enum import IntEnum
 import hashlib
+import vt
 
 from url_normalize import url_normalize
 from check_virustotal import CheckVirusTotal
@@ -69,7 +70,7 @@ class CheckURL:
     def __normalize_blacklist_output(self):
         pass
 
-    def __norm_category(category: str) -> Categories:
+    def __norm_category(self, category: str) -> Categories:
         category = category.lower()
         for item in [
         'ransomware', 'ransom', 'cryptolocker', 'cryptowall', 'wannacry',
@@ -126,7 +127,7 @@ class CheckURL:
             
         return None
 
-    def __check_vt(self, url, path):
+    def check_vt(self, url, path):
         output = self.__vt_obj.run(url, path)
 
         result = {}
@@ -154,8 +155,8 @@ class CheckURL:
             result['confidence'] = max(0.1, 1.0 - malicious_ratio*10)
 
         result['categories'] = {}
-        for category in result['categories'].values():
-            norm = self.__norm_category(category)
+        for category in output['categories'].values():
+            norm = str(self.__norm_category(category))
             if norm != None:
                 if norm in result['categories']:
                     result['categories'][norm] += 1
@@ -166,20 +167,11 @@ class CheckURL:
         VIRUSTOTAL SUMMARY
         --------------------------
         Verdict: {str(result['status'])}
+        Categories: {result['categories']}
+        Confidence: {result['confidence']}
         '''
-
-        summary += 
-
-
-        
-
-        
-        
-
-
-
-
-
+        print(summary)
+        return summary
 
     def __blacklist_lookup(self, url, path):
         path = os.path.join(path, hashlib.md5(url.encode()).hexdigest())
@@ -190,6 +182,10 @@ class CheckURL:
 
     def run(self, url):
         url = self.__normalize_url(url)
+
+if __name__ == '__main__':
+    object = CheckURL()
+    object.check_vt('https://br-icloud.com.br', path = './')
 
 
 
