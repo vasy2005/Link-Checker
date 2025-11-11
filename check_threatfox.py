@@ -39,15 +39,19 @@ class CheckThreatFox:
             final_results['error'] = e
             return final_results
 
-        final_results['raw_response'] = data #TODO: each checker should store the raw response in filepath: /url/..
-        final_results['url'] = data['ioc']
-        final_results['threat_type'] = data['threat_type']
-        final_results['malware_name'] = data['malware']
-        
-        final_results['type_desc'] = data['ioc_type_desc']
-        return final_results
+        try:
+            final_results['url'] = data['ioc']
+            final_results['threat_type'] = data['threat_type']
+            final_results['malware_name'] = data['malware']
+            
+            final_results['type_desc'] = data['ioc_type_desc']
+            return final_results
+        except Exception as e:
+            final_results['ok'] = 0
+            final_results['error'] = str(e)
+            return final_results
 
-    def run(self, url: str, path: str = None) -> None:
+    def run(self, url: str, path: str = None):
         results = self.__scan_url(url)
 
         if path != None:
@@ -56,7 +60,7 @@ class CheckThreatFox:
             with open(file_path, 'w') as file:
                 file.write(json.dumps(results))
 
-
+        return results
     
 if __name__ == '__main__':
     object = CheckThreatFox()

@@ -55,17 +55,23 @@ class CheckGoogleSB:
             final_results['error'] = str(e)
             return final_results
         
-        result = response.json()
-        if 'matches' in result:
-            match = result['matches'][0]
-            final_results['threat_type'] = match['threatType']
-            final_results['url'] = match['threat']['url']
-            final_results['raw_response'] = match
-        else:
-            final_results['error'] = 'No malware found'
-        return final_results
+        try:
+            result = response.json()
+            if 'matches' in result:
+                match = result['matches'][0]
+                final_results['threat_type'] = match['threatType']
+                final_results['url'] = match['threat']['url']
+                final_results['raw_response'] = match
+            else:
+                final_results['ok'] = 0
+                final_results['error'] = 'No malware found'
+            return final_results
+        except Exception as e:
+            final_results['ok'] = 0
+            final_results['error'] = str(e)
+            return final_results
     
-    def run(self, url: str, path: str = None) -> None:
+    def run(self, url: str, path: str = None):
         results = self.__scan_url(url)
 
         if path != None:
@@ -73,6 +79,8 @@ class CheckGoogleSB:
             file_path = os.path.join(path, file_name)
             with open(file_path, 'w') as file:
                 file.write(json.dumps(results))
+
+        return results
 
 
     

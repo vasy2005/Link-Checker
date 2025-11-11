@@ -2,6 +2,13 @@ import os
 from enum import IntEnum
 import hashlib
 import vt
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+from concurrent.futures import TimeoutError
+import shutil
+import textwrap
+import time
+import math
 
 from url_normalize import url_normalize
 from check_virustotal import CheckVirusTotal
@@ -53,6 +60,8 @@ class CheckURL:
         self.__threatfox_check = threatfox_check
         self.__report_path = report_path
 
+        self.__len_engines = 3
+
         self.__vt_obj = None
         self.__gsb_obj = None
         self.__fox_obj = None
@@ -75,7 +84,7 @@ class CheckURL:
         for item in [
         'ransomware', 'ransom', 'cryptolocker', 'cryptowall', 'wannacry',
         'petya', 'filecoder', 'encoder', 'crypto-malware', 'trojan-ransom',
-        'file-locker', 'encrypting-trojan', 'locker'
+        'file-locker', 'encrypting-trojan', 'locker', 'social' ,'engineering'
                     ]:
             if item in category:
                 return Categories.RANSOMWARE
@@ -84,7 +93,7 @@ class CheckURL:
         'c2', 'command-control', 'command_and_control', 'botnet', 'botnet-c2',
         'botnet-cc', 'backdoor', 'remote-access-trojan', 'rat', 'beacon',
         'call-home', 'cnc', 'command-server', 'trojan-c2', 'malware-c2',
-        'control-server', 'communication'
+        'control-server', 'communication', 'cc'
                     ]:
             if item in category:
                 return Categories.C2
@@ -93,7 +102,7 @@ class CheckURL:
         'malware', 'malicious', 'trojan', 'trojan-horse', 'trojan-dropper',
         'virus', 'worm', 'adware', 'pua', 'riskware', 'hacktool', 'generic',
         'malicious-site', 'malicious-software', 'potentially-harmful',
-        'unwanted-software', 'malware-gen', 'trojan-gen'
+        'unwanted-software', 'malware-gen', 'trojan-gen', 'unwanted','software'
                     ]:
             if item in category:
                 return Categories.MALWARE
@@ -125,13 +134,22 @@ class CheckURL:
             if item in category:
                 return Categories.SPAM
             
-        return None
+        return category
 
     def check_vt(self, url, path):
         output = self.__vt_obj.run(url, path)
 
         result = {}
         result['source'] = 'VirusTotal'
+        if output['ok'] != 1:
+            result['error'] = output['error']
+            summary = textwrap.dedent(f'''
+            VIRUSTOTAL SUMMARY
+            --------------------
+            ERROR: {result['error']}
+                         '''
+                         )
+            return summary, result
         
         unknown_count = output['engine_stats']['undetected']
         clean_count = output['engine_stats']['harmless']
@@ -163,29 +181,103 @@ class CheckURL:
                 else:
                     result['categories'][norm] = 1
 
-        summary = f'''
+        result['last_final_url'] = output['last_final_url']
+
+        summary = textwrap.dedent(f'''
         VIRUSTOTAL SUMMARY
         --------------------------
         Verdict: {str(result['status'])}
         Categories: {result['categories']}
         Confidence: {result['confidence']}
-        '''
-        print(summary)
-        return summary
+        (Final URL: {result['last_final_url']})
+                         '''
+                         )
+        return summary, result
+    
+    def check_gsb(self, url, path):
+        output = self.__gsb_obj.run(url, path)
 
-    def __blacklist_lookup(self, url, path):
-        path = os.path.join(path, hashlib.md5(url.encode()).hexdigest())
-        os.mkdir(path)
+        result = {}
+        result['source'] = 'Google Safe Browsing'
+        if output['ok'] != 1:
+            result['error'] = output['error']
+            summary = textwrap.dedent(f'''
+            GOOGLE SAFE BROWSING SUMMARY
+            --------------------------
+            ERROR: {result['error']}
+                         '''
+                         )
+            return summary, result
+        
+        result['status'] = self.__norm_category(output['threat_type'])
 
-        if self.__vt_obj != None:
-            self.__check_vt(url, path)
+        summary = textwrap.dedent(f'''
+        GOOGLE SAFE BROWSING SUMMARY
+        ----------------------
+        Verdict: {str(result['status'])}
+                         '''
+                         )
+        return summary, result        
+    
+    def check_fox(self, url, path):
+        output = self.__fox_obj.run(url, path)
 
+        result = {}
+        result['source'] = 'ThreatFox'
+        if output['ok'] != 1:
+            result['error'] = output['error']
+            summary = textwrap.dedent(f'''
+            THREATFOX SUMMARY
+            --------------
+            ERROR: {result['error']}
+                         '''
+                         )
+            return summary, result
+        
+        result['status'] = self.__norm_category(output['threat_type'])
+        result['categories'] = output['malware_name']
+        result['details'] = output['type_desc']
+
+        summary = textwrap.dedent(f'''
+        THREATFOX SUMMARY
+        ---------------------
+        Verdict: {str(result['status'])}
+        Categories: {result['categories']}
+        Details: {result['details']}
+                         '''
+                         )
+        return summary, result
+
+    def blacklist_lookup(self, url, path):
+        os.makedirs(path, exist_ok=True)
+
+        print(f'URL: {url}')
+        with ThreadPoolExecutor(max_workers = self.__len_engines) as executor:
+            futures = []
+            if self.__vt_obj != None:
+                futures.append(executor.submit(self.check_vt, url, path))
+            if self.__gsb_obj != None:
+                futures.append(executor.submit(self.check_gsb, url, path))
+            if self.__fox_obj != None:
+                futures.append(executor.submit(self.check_fox, url, path))
+            try:
+                for future in as_completed(futures, timeout = 20):
+                    summary, result = future.result()
+                    print(summary)
+            except TimeoutError:
+                print('Search timed out')
+
+    def whois_lookup(self, url, path):
+        pass
+        
+        
     def run(self, url):
+        path = os.path.join(path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
         url = self.__normalize_url(url)
 
 if __name__ == '__main__':
     object = CheckURL()
-    object.check_vt('https://br-icloud.com.br', path = './')
+    object.blacklist_lookup('https://salator.es/login/', path = './')
 
 
 

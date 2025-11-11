@@ -63,32 +63,39 @@ class CheckVirusTotal:
             client.close()
         except Exception as e:
             final_results['ok'] = 0
-            final_results['error'] = e
+            final_results['error'] = str(e)
             client.close()
-            return final_results
+            return self.__into_dict(final_results)
 
-        final_results = {}
-        final_results['engine_stats'] = url_object.last_analysis_stats # How many engines found the link to be malicious/suspicious/undetected/harmless/timeout
-        final_results['community_votes'] = url_object.total_votes
-        final_results['times_submitted'] = url_object.times_submitted
-        final_results['internal_trust_score'] = url_object.reputation
-        final_results['url'] = url
-        final_results['last_http_code'] = url_object.last_http_response_code
-        final_results['last_final_url'] = url_object.last_final_url
-        final_results['categories'] = url_object.categories
-        final_results['tags'] = url_object.tags
+        try:
+            final_results['engine_stats'] = url_object.last_analysis_stats # How many engines found the link to be malicious/suspicious/undetected/harmless/timeout
+            final_results['community_votes'] = url_object.total_votes
+            final_results['times_submitted'] = url_object.times_submitted
+            final_results['internal_trust_score'] = url_object.reputation
+            final_results['url'] = url
+            final_results['last_http_code'] = url_object.last_http_response_code
+            final_results['last_final_url'] = url_object.last_final_url
+            final_results['categories'] = url_object.categories
+            final_results['tags'] = url_object.tags
 
-        final_results['detailed_engine_results'] = url_object.last_analysis_results
-        final_results['flagged_by'] = [engine for engine, data in final_results['detailed_engine_results'].items() if data['category'] == 'malicious']
+            final_results['detailed_engine_results'] = url_object.last_analysis_results
+            final_results['flagged_by'] = [engine for engine, data in final_results['detailed_engine_results'].items() if data['category'] == 'malicious']
 
-        if final_results['engine_stats']['malicious'] > 3 or final_results['internal_trust_score'] < 0:
-            final_results['verdict'] = 'malware'
-        else:
-            final_results['verdict'] = 'harmless'
+            if final_results['engine_stats']['malicious'] > 3 or final_results['internal_trust_score'] < 0:
+                final_results['verdict'] = 'malware'
+            else:
+                final_results['verdict'] = 'harmless'
 
-        # reputation: > 1000 very good reputation, 0-1000 neutral, < 0 suspicious
-        
-        return self.__into_dict(final_results)
+            client.close()
+
+            # reputation: > 1000 very good reputation, 0-1000 neutral, < 0 suspicious
+            
+            return self.__into_dict(final_results)
+        except Exception as e:
+            final_results['ok'] = 0
+            final_results['error'] = str(e)
+            client.close()
+            return self.__into_dict(final_results)
     
     def __vt_report(self, results):
         output = f'URL: {results['url']}\n'
@@ -107,7 +114,7 @@ class CheckVirusTotal:
 
         return output
 
-    def run(self, url: str, path: str) -> None:
+    def run(self, url: str, path: str):
         results = self.__scan_url(url)
         
         if path != None:
