@@ -126,9 +126,9 @@ class CheckVirusTotal:
         return results
 
 
-# if __name__ == '__main__':
-#     object = CheckVirusTotal()
-#     print(object.run(url_normalize('https://br-icloud.com.br'), './'))
+if __name__ == '__main__':
+    object = CheckVirusTotal()
+    print(object.run('https://salator.es/login', './'))
 
 
 

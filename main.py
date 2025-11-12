@@ -14,6 +14,7 @@ from url_normalize import url_normalize
 from check_virustotal import CheckVirusTotal
 from check_googlesb import CheckGoogleSB
 from check_threatfox import CheckThreatFox
+from check_whois import CheckWhoIs
 
 class ThreatLevel(IntEnum):
     UNKNOWN = 0
@@ -72,6 +73,8 @@ class CheckURL:
             self.__gsb_obj = CheckGoogleSB()
         if threatfox_check == True:
             self.__fox_obj = CheckThreatFox()
+        
+        self.__whois_obj = CheckWhoIs()
 
     def __normalize_url(self, url):
         url = url_normalize(url)
@@ -247,10 +250,37 @@ class CheckURL:
                          '''
                          )
         return summary, result
+    
+    def whois_lookup(self, url, path): 
+        output = self.__whois_obj.whois(url, path)
 
-    def blacklist_lookup(self, url, path):
+        if output['ok'] != 1:
+            summary = textwrap.dedent(f'''
+            WHOIS SUMMARY
+            --------------
+            ERROR: {output['error']}
+                         '''
+                         )
+            return summary, output
+
+        summary = textwrap.dedent(f'''
+        WHOIS LOOKUP
+        ------------------
+        Domain: {output['domain']}
+        Registrar: {output['registrar']}
+        Country: {output['country']}
+        Creation Date: {output['creation_date']}
+        Expiration Date: {output['expiration_date']}
+        Age (Days): {output['age_days']}
+        ''')
+
+        return summary, output
+        
+
+    def lookup(self, url, path):
         os.makedirs(path, exist_ok=True)
 
+        #Blacklist Lookup
         print(f'URL: {url}')
         with ThreadPoolExecutor(max_workers = self.__len_engines) as executor:
             futures = []
@@ -267,17 +297,17 @@ class CheckURL:
             except TimeoutError:
                 print('Search timed out')
 
-    def whois_lookup(self, url, path):
-        pass
-        
-        
+        #WhoIs Lookup
+        summary, result = self.whois_lookup(url, path)
+        print(summary)
+
     def run(self, url):
         path = os.path.join(path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
         url = self.__normalize_url(url)
 
 if __name__ == '__main__':
     object = CheckURL()
-    object.blacklist_lookup('https://salator.es/login/', path = './')
+    object.lookup('www.salator.es', path = './')
 
 
 
