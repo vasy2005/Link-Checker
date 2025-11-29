@@ -4,16 +4,12 @@ import os
 import requests
 import hashlib
 
-from url_normalize import url_normalize
-
 class CheckThreatFox:
     def __init__(self):
         load_dotenv()
         self.__api_key = os.getenv('THREATFOX_API_KEY')
 
     def __scan_url(self, url):
-        # url = url_normalize(url) #TODO Normalize in main
-
         api_url = "https://threatfox-api.abuse.ch/api/v1/"
 
         final_results = {}
@@ -36,7 +32,7 @@ class CheckThreatFox:
 
         except Exception as e:
             final_results['ok'] = 0
-            final_results['error'] = e
+            final_results['error'] = str(e)
             return final_results
 
         try:
@@ -45,6 +41,7 @@ class CheckThreatFox:
             final_results['malware_name'] = data['malware']
             
             final_results['type_desc'] = data['ioc_type_desc']
+            final_results['confidence_level'] = data['confidence_level']
             return final_results
         except Exception as e:
             final_results['ok'] = 0

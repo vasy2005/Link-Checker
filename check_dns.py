@@ -7,7 +7,7 @@ class CheckDNS:
     def __init__(self):
         pass
 
-    def dns_lookup(self, domain):
+    def dns_lookup(self, domain, path: str):
         answer = dns.resolver.resolve(domain, 'A')
         result_dict = self.__dns_answer_to_complete_dict(answer)
 
@@ -18,11 +18,11 @@ class CheckDNS:
                 file.write(json.dumps(result_dict))
 
         output = {}
-        output['canonical_name'] = result_dict['canonical_name']
-        output['ttl'] = result_dict['rrset_info']['ttl']
+        output['canonical_name'] = result_dict.get('canonical_name')
+        output['ttl'] = result_dict['rrset_info'].get('ttl')
         output['records'] = [item['string_value'] for item in result_dict['records']]
 
-        return result_dict
+        return output
 
     def __dns_answer_to_complete_dict(self, answer):
         """

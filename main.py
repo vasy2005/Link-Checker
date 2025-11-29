@@ -1,7 +1,6 @@
 import os
 from enum import IntEnum
 import hashlib
-import vt
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
 from concurrent.futures import TimeoutError
@@ -336,6 +335,7 @@ class CheckURL:
         result['status'] = self.__norm_category(output['threat_type'])
         result['categories'] = output['malware_name']
         result['details'] = output['type_desc']
+        result['confidence'] = output['confidence_level']
 
         summary = textwrap.dedent(f'''
         THREATFOX SUMMARY
@@ -343,6 +343,7 @@ class CheckURL:
         Verdict: {str(result['status'])}
         Categories: {result['categories']}
         Details: {result['details']}
+        Confidence Level: {result['confidence']}
                          '''
                          )
         return summary, result
@@ -413,9 +414,8 @@ class CheckURL:
         results[result['name']] = result
 
         # Get DNS TTL
-        results['dns'] = {}
-        results['dns']['ttl'] = self.__dns_obj.get_ttl(urlparse(url).hostname, path)
-
+        results['dns'] = self.__dns_obj.dns_lookup(urlparse(url).hostname, path)
+        print(results['dns']) # TODO: print formatted dns output
         return summary, results
     
     def __get_feature_vector(self, url: str, lookup_result):
@@ -453,6 +453,7 @@ class CheckURL:
 
         # Threatfox
         features['fox_status'] = lookup_result['fox'].get('status')
+        features['fox_confidence'] = lookup_result['fox'].get('confidence')
 
         # GoogleSB
         features['gsb_status'] = lookup_result['gsb'].get('status')
@@ -479,7 +480,7 @@ class CheckURL:
 
 if __name__ == '__main__':
     object = CheckURL(report_path='./url_checks')
-    object.run('retajconsultancy.com')
+    object.run('authentic-origin.shop')
 
 
 
