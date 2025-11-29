@@ -9,11 +9,23 @@ import shutil
 import textwrap
 import time
 import math
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+import tldextract
+import string
+import ipaddress
+from datetime import datetime
+import re
+
+from confusable_homoglyphs import confusables
+from ftfy import fix_text
+import Levenshtein
 
 from url_normalize import url_normalize
 from check_virustotal import CheckVirusTotal
 from check_googlesb import CheckGoogleSB
 from check_threatfox import CheckThreatFox
+from check_whois import CheckWhoIs
+from check_dns import CheckDNS
 
 class ThreatLevel(IntEnum):
     UNKNOWN = 0
@@ -72,9 +84,78 @@ class CheckURL:
             self.__gsb_obj = CheckGoogleSB()
         if threatfox_check == True:
             self.__fox_obj = CheckThreatFox()
+        
+        self.__whois_obj = CheckWhoIs()
+        self.__dns_obj = CheckDNS()
+
+    def __get_skeleton(self, url: str):
+        fixed = fix_text(url)
+        
+        # Convert to ASCII using 'ignore' errors
+        ascii_bytes = fixed.encode('ascii', 'ignore')
+        ascii_text = ascii_bytes.decode('ascii')
+        
+        # Remove any non-URL-safe characters
+        cleaned = re.sub(r'[^a-zA-Z0-9\.\-_:/?=&]', '', ascii_text)
+        
+        return cleaned
+    
+    def __host_is_ip(self, hostname: str) -> bool:
+        try:
+            # Try IPv4 or IPv6
+            ipaddress.ip_address(hostname)
+            return True
+        except ValueError:
+            return False
+        
+    def __get_shannon_entropy(self, domain: str):
+        chars = {}
+        lg = 0
+
+        for ch in domain:
+            if ch not in chars:
+                chars[ch] = 1
+            else:
+                chars[ch] += 1
+            lg += 1
+
+        entropy = 0
+        for ch, freq in chars.items():
+            prob = freq / lg
+            entropy -= prob * math.log2(prob)
+
+        return entropy
 
     def __normalize_url(self, url):
         url = url_normalize(url)
+        # Does lowercase scheme & host, removing default ports, resolving relative paths, Percent-encoding normalization, Removing duplicate slashes
+
+        parsed = urlparse(url)
+        # Strip fragments
+        parsed = parsed._replace(fragment = '')
+
+        # Strip tracking/query parameters
+        tracking_params = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"}
+        query_params = parse_qsl(parsed.query)
+        filtered_params = [(k, v) for k, v in query_params if k not in tracking_params]
+        #TODO: remove session ids?
+        parsed = parsed._replace(query = urlencode(filtered_params))
+
+        # Convert Punycode to Unicode
+        hostname = parsed.hostname
+        unicode = hostname.encode('ascii').decode('idna')
+        parsed = parsed._replace(netloc = unicode)
+
+
+
+        
+
+        # if hostname != unicode_skeleton:
+        #     print("WARNING: Obfuscation detected, link has homoglyphs")
+
+        url = urlunparse(parsed)
+
+        return url
 
     def __normalize_blacklist_output(self):
         pass
@@ -140,6 +221,7 @@ class CheckURL:
         output = self.__vt_obj.run(url, path)
 
         result = {}
+        result['name'] = 'vt'
         result['source'] = 'VirusTotal'
         if output['ok'] != 1:
             result['error'] = output['error']
@@ -172,6 +254,15 @@ class CheckURL:
             result['status'] = ThreatLevel.CLEAN
             result['confidence'] = max(0.1, 1.0 - malicious_ratio*10)
 
+        result['unknown_ratio'] = unknown_ratio
+        result['clean_ratio'] = clean_ratio
+        result['suspicious_ratio'] = suspicious_ratio
+        result['malicious_ratio'] = malicious_ratio
+
+        result['times_submitted'] = output.get('times_submitted')
+        result['internal_trust_score'] = output.get('internal_trust_score')
+        result['comm_votes_malicious'] = output['community_votes']['malicious']
+
         result['categories'] = {}
         for category in output['categories'].values():
             norm = str(self.__norm_category(category))
@@ -199,8 +290,13 @@ class CheckURL:
 
         result = {}
         result['source'] = 'Google Safe Browsing'
+        result['name'] = 'gsb'
+
+
         if output['ok'] != 1:
             result['error'] = output['error']
+            if result['error'] == 'No malware found':
+                result['status'] = ThreatLevel.UNKNOWN
             summary = textwrap.dedent(f'''
             GOOGLE SAFE BROWSING SUMMARY
             --------------------------
@@ -223,9 +319,12 @@ class CheckURL:
         output = self.__fox_obj.run(url, path)
 
         result = {}
+        result['name'] = 'fox'
         result['source'] = 'ThreatFox'
         if output['ok'] != 1:
             result['error'] = output['error']
+            if result['error'] == 'no_result':
+                result['status'] = ThreatLevel.UNKNOWN
             summary = textwrap.dedent(f'''
             THREATFOX SUMMARY
             --------------
@@ -247,10 +346,51 @@ class CheckURL:
                          '''
                          )
         return summary, result
+    
+    def whois_lookup(self, url, path): 
+        hostname = urlparse(url).hostname
+        ext = tldextract.extract(url)
+        domain = ext.top_domain_under_public_suffix
 
-    def blacklist_lookup(self, url, path):
+        output = self.__whois_obj.whois(domain, path)
+        output['name'] = 'whois'
+
+        if output['ok'] != 1:
+            summary = textwrap.dedent(f'''
+            WHOIS SUMMARY
+            --------------
+            ERROR: {output['error']}
+                         '''
+                         )
+            return summary, output
+        
+        try:
+            summary = textwrap.dedent(f'''
+            WHOIS LOOKUP
+            ------------------
+            Domain: {output.get('domain')}
+            Registrar: {output.get('registrar')}
+            Country: {output.get('country')}
+            Creation Date: {output.get('creation_date')}
+            Expiration Date: {output.get('expiration_date')}
+            Age (Days): {output.get('age_days')}
+            ''')
+        except Exception as e:
+            summary = textwrap.dedent(f'''
+            WHOIS SUMMARY
+            --------------
+            ERROR: {str(e)}
+                         '''
+                         )
+            return summary, output
+
+        return summary, output
+        
+    def lookup(self, url, path):
         os.makedirs(path, exist_ok=True)
+        results = {}
 
+        #Blacklist Lookup
         print(f'URL: {url}')
         with ThreadPoolExecutor(max_workers = self.__len_engines) as executor:
             futures = []
@@ -263,21 +403,83 @@ class CheckURL:
             try:
                 for future in as_completed(futures, timeout = 20):
                     summary, result = future.result()
+                    results[result['name']] = result
                     print(summary)
             except TimeoutError:
                 print('Search timed out')
 
-    def whois_lookup(self, url, path):
-        pass
-        
-        
+        # WhoIs Lookup
+        summary, result = self.whois_lookup(url, path)
+        results[result['name']] = result
+
+        # Get DNS TTL
+        results['dns'] = {}
+        results['dns']['ttl'] = self.__dns_obj.get_ttl(urlparse(url).hostname, path)
+
+        return summary, results
+    
+    def __get_feature_vector(self, url: str, lookup_result):
+        features = {}
+        parsed = urlparse(url)
+
+        # URL Lexical Features
+        features['url_length'] = len(url)
+        features['num_subdirs'] = len(parsed.path.strip('/').split('/'))
+        features['num_digits'] = sum(c.isdigit() for c in url)
+        features['contains_ip_address'] = self.__host_is_ip(parsed.hostname)
+        features['number_of_subdomains'] = max(len(parsed.hostname.split('.'))-2, 0)
+        features['has_login_keyword'] = any(word in url for word in ['login', 'bank', 'signin', 'signup', 'logout', 'money', 'account'])
+        features['is_shortened_url'] = any(word in url for word in ['bit.ly', 'tinyurl'])
+        features['domain_shannon_entropy'] = self.__get_shannon_entropy(parsed.hostname)
+
+        # Domain WHOIS Features
+        features['domain_age_days'] = lookup_result['whois'].get('age_days')
+        try:
+            features['domain_expiration_days'] = (lookup_result['whois']['expiration_date'].replace(tzinfo=None) - datetime.now()).days
+        except:
+            features['domain_expiration_days'] = None
+
+        # DNS Features
+        features['ttl'] = lookup_result['dns']['ttl']
+
+        # VT
+        features['vt_malicious_ratio'] = lookup_result['vt']['malicious_ratio']
+        features['vt_suspicious_ratio'] = lookup_result['vt']['suspicious_ratio']
+        features['vt_clean_ratio'] = lookup_result['vt']['clean_ratio']
+        features['vt_unknown_ratio'] = lookup_result['vt']['unknown_ratio']
+        features['vt_times_submitted'] = lookup_result['vt']['times_submitted']
+        features['vt_internal_trust_score'] = lookup_result['vt']['internal_trust_score']
+        features['comm_votes_malicious'] = lookup_result['vt']['comm_votes_malicious']
+
+        # Threatfox
+        features['fox_status'] = lookup_result['fox'].get('status')
+
+        # GoogleSB
+        features['gsb_status'] = lookup_result['gsb'].get('status')
+
+        #compute skeleton and levenshtein distance
+        skeleton = self.__get_skeleton(parsed.hostname)
+        if skeleton != parsed.hostname:
+            features['is_skeleton_different'] = 1
+        else:
+            features['is_skeleton_different'] = 0
+
+        features['levenshtein_distance'] = Levenshtein.distance(parsed.hostname, skeleton)
+
+        return features
+
+
     def run(self, url):
-        path = os.path.join(path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
+        path = os.path.join(self.__report_path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
         url = self.__normalize_url(url)
+        summary, lookup_result = self.lookup(url, path)
+        print(lookup_result)
+
+        print(self.__get_feature_vector(url, lookup_result))
 
 if __name__ == '__main__':
-    object = CheckURL()
-    object.blacklist_lookup('https://salator.es/login/', path = './')
+    object = CheckURL(report_path='./url_checks')
+    object.run('retajconsultancy.com')
 
 
 

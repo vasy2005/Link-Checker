@@ -7,7 +7,7 @@ class CheckDNS:
     def __init__(self):
         pass
 
-    def dns_lookup(self, domain, path: str = None):
+    def dns_lookup(self, domain):
         answer = dns.resolver.resolve(domain, 'A')
         result_dict = self.__dns_answer_to_complete_dict(answer)
 
