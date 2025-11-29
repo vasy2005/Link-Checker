@@ -28,13 +28,13 @@ class CheckWhoIs:
         output['domain'] = w.domain_name
         output['registrar'] = w.registrant_name
         output['country'] = w.country
-        if w.creation_date is not None:
+        if w.get('creation_date') is not None:
             if isinstance(w.creation_date, list):
                 output['creation_date'] = w.creation_date[0]
             else:
                 output['creation_date'] = w.creation_date
 
-            output['age_days'] = (datetime.now(output['creation_date'].tzinfo) - output['creation_date']).days
+            output['age_days'] = (datetime.now() - output['creation_date'].replace(tzinfo=None)).days
 
         output['expiration_date'] = w.expiration_date
 
@@ -48,6 +48,7 @@ class CheckWhoIs:
     
 if __name__ == '__main__':
     object = CheckWhoIs()
-    object.whois('salator.com', path='./')
+    print(object.whois('https://salator.es/login/', path='./'))
+
 
         

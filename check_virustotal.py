@@ -43,11 +43,14 @@ class CheckVirusTotal:
             url_id = vt.url_id(url)
             url_object = client.get_object(f'/urls/{url_id}')
 
+            if not hasattr(url_object, "last_http_response_code") or url_object.last_http_response_code is None:
+                raise APIError(404, 'URL not found')
             if url_object and url_object.last_analysis_date:
                 age_days = (time.time() - url_object.last_analysis_date.timestamp()) / (24*60*60)
 
                 if age_days > 7:
-                    raise APIError
+                    raise APIError(404, 'Recent URL analysis not found')
+                
                     
             client.close()
         except APIError:
@@ -68,17 +71,16 @@ class CheckVirusTotal:
             return self.__into_dict(final_results)
 
         try:
-            final_results['engine_stats'] = url_object.last_analysis_stats # How many engines found the link to be malicious/suspicious/undetected/harmless/timeout
-            final_results['community_votes'] = url_object.total_votes
-            final_results['times_submitted'] = url_object.times_submitted
-            final_results['internal_trust_score'] = url_object.reputation
+            final_results['engine_stats'] = url_object.get('last_analysis_stats', None) # How many engines found the link to be malicious/suspicious/undetected/harmless/timeout
+            final_results['community_votes'] = url_object.get('total_votes', None)
+            final_results['times_submitted'] = url_object.get('times_submitted', None)
+            final_results['internal_trust_score'] = url_object.get('reputation', None)
             final_results['url'] = url
-            final_results['last_http_code'] = url_object.last_http_response_code
-            final_results['last_final_url'] = url_object.last_final_url
-            final_results['categories'] = url_object.categories
-            final_results['tags'] = url_object.tags
+            final_results['last_final_url'] = url_object.get('last_final_url', None)
+            final_results['categories'] = url_object.get('categories', None)
+            final_results['tags'] = url_object.get('tags', None)
 
-            final_results['detailed_engine_results'] = url_object.last_analysis_results
+            final_results['detailed_engine_results'] = url_object.get('last_analysis_results', None)
             final_results['flagged_by'] = [engine for engine, data in final_results['detailed_engine_results'].items() if data['category'] == 'malicious']
 
             if final_results['engine_stats']['malicious'] > 3 or final_results['internal_trust_score'] < 0:
@@ -86,8 +88,9 @@ class CheckVirusTotal:
             else:
                 final_results['verdict'] = 'harmless'
 
+            final_results['last_http_code'] = url_object.get('last_http_response_code', None)
             client.close()
-
+            #TODO: check redirection_chain
             # reputation: > 1000 very good reputation, 0-1000 neutral, < 0 suspicious
             
             return self.__into_dict(final_results)

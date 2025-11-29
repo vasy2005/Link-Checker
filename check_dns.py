@@ -7,22 +7,26 @@ class CheckDNS:
     def __init__(self):
         pass
 
-    def dns_lookup(self, domain, path: str = None):
+    def dns_lookup(self, domain):
         answer = dns.resolver.resolve(domain, 'A')
         result_dict = self.__dns_answer_to_complete_dict(answer)
 
         return result_dict
     
     def get_ttl(self, domain, path: str = None):
-        result = self.dns_lookup(self, domain, path)
 
-        if path != None:
-            file_name = f'googlesb_raw_output_{hashlib.md5(domain.encode()).hexdigest()}.json'
-            file_path = os.path.join(path, file_name)
-            with open(file_path, 'w') as file:
-                file.write(json.dumps(result))
+        try:
+            result = self.dns_lookup(domain)
 
-        return result['rrset_info']['ttl']
+            if path != None:
+                file_name = f'dnslookup_raw_output_{hashlib.md5(domain.encode()).hexdigest()}.json'
+                file_path = os.path.join(path, file_name)
+                with open(file_path, 'w') as file:
+                    file.write(json.dumps(result))
+            return result['rrset_info']['ttl']
+        except Exception as e:
+            print(e)
+            return None
 
     def __dns_answer_to_complete_dict(self, answer):
         """
@@ -70,4 +74,4 @@ class CheckDNS:
 
 if __name__ == '__main__':
     object = CheckDNS()
-    object.dns_lookup('google.com', './')
+    print(object.dns_lookup('salator.es', './'))
