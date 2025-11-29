@@ -11,18 +11,18 @@ class CheckDNS:
         answer = dns.resolver.resolve(domain, 'A')
         result_dict = self.__dns_answer_to_complete_dict(answer)
 
-        return result_dict
-    
-    def get_ttl(self, domain, path: str = None):
-        result = self.dns_lookup(self, domain, path)
-
         if path != None:
             file_name = f'googlesb_raw_output_{hashlib.md5(domain.encode()).hexdigest()}.json'
             file_path = os.path.join(path, file_name)
             with open(file_path, 'w') as file:
-                file.write(json.dumps(result))
+                file.write(json.dumps(result_dict))
 
-        return result['rrset_info']['ttl']
+        output = {}
+        output['canonical_name'] = result_dict['canonical_name']
+        output['ttl'] = result_dict['rrset_info']['ttl']
+        output['records'] = [item['string_value'] for item in result_dict['records']]
+
+        return result_dict
 
     def __dns_answer_to_complete_dict(self, answer):
         """
@@ -70,4 +70,4 @@ class CheckDNS:
 
 if __name__ == '__main__':
     object = CheckDNS()
-    object.dns_lookup('google.com', './')
+    object.dns_lookup('br-icloud.com.br', './')
