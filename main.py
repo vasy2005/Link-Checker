@@ -25,6 +25,7 @@ from check_googlesb import CheckGoogleSB
 from check_threatfox import CheckThreatFox
 from check_whois import CheckWhoIs
 from check_dns import CheckDNS
+# from random_forest import RandomForestClassifier
 
 class ThreatLevel(IntEnum):
     UNKNOWN = 0
@@ -64,7 +65,7 @@ class Categories(IntEnum):
 class CheckURL:
     def __init__(self,
                  vt_check: bool = True, googlesb_check: bool = True, threatfox_check: bool = True,
-                 report_path: str = './'):
+                 report_path: str = None):
         self.__url = ''
         self.__vt_check = vt_check
         self.__googlesb_check = googlesb_check
@@ -145,13 +146,6 @@ class CheckURL:
         unicode = hostname.encode('ascii').decode('idna')
         parsed = parsed._replace(netloc = unicode)
 
-
-
-        
-
-        # if hostname != unicode_skeleton:
-        #     print("WARNING: Obfuscation detected, link has homoglyphs")
-
         url = urlunparse(parsed)
 
         return url
@@ -217,72 +211,88 @@ class CheckURL:
         return category
 
     def check_vt(self, url, path):
-        output = self.__vt_obj.run(url, path)
+        # return 'omg',{'name': 'vt'}
 
-        result = {}
-        result['name'] = 'vt'
-        result['source'] = 'VirusTotal'
-        if output['ok'] != 1:
-            result['error'] = output['error']
+        try:
+            output = self.__vt_obj.run(url, path)
+
+            result = {}
+            result['name'] = 'vt'
+            result['source'] = 'VirusTotal'
+            if output['ok'] != 1:
+                result['error'] = output['error']
+                summary = textwrap.dedent(f'''
+                VIRUSTOTAL SUMMARY
+                --------------------
+                ERROR: {result['error']}
+                            '''
+                            )
+                return summary, result
+            
+            unknown_count = output['engine_stats']['undetected']
+            clean_count = output['engine_stats']['harmless']
+            suspicious_count = output['engine_stats']['suspicious']
+            malicious_count = output['engine_stats']['malicious']
+            total_count = unknown_count + clean_count + suspicious_count + malicious_count
+
+            unknown_ratio = unknown_count / total_count
+            clean_ratio = clean_count / total_count
+            suspicious_ratio = suspicious_count / total_count
+            malicious_ratio = malicious_count / total_count
+
+            if malicious_ratio >= 0.1:
+                result['status'] = ThreatLevel.MALICIOUS
+                result['confidence'] = min(1.0, malicious_ratio*2)
+            elif malicious_ratio >= 0.05 or suspicious_ratio >= 0.2:
+                result['status'] = ThreatLevel.SUSPICIOUS
+                result['confidence'] = min(0.8, (malicious_ratio + suspicious_ratio)*2)
+            else:
+                result['status'] = ThreatLevel.CLEAN
+                result['confidence'] = max(0.1, 1.0 - malicious_ratio*10)
+
+            result['unknown_ratio'] = unknown_ratio
+            result['clean_ratio'] = clean_ratio
+            result['suspicious_ratio'] = suspicious_ratio
+            result['malicious_ratio'] = malicious_ratio
+
+            result['times_submitted'] = output.get('times_submitted')
+            result['internal_trust_score'] = output.get('internal_trust_score')
+            result['comm_votes_malicious'] = output['community_votes']['malicious']
+
+            result['categories'] = {}
+            for category in output['categories'].values():
+                norm = str(self.__norm_category(category))
+                if norm != None:
+                    if norm in result['categories']:
+                        result['categories'][norm] += 1
+                    else:
+                        result['categories'][norm] = 1
+
+            result['last_final_url'] = output['last_final_url']
+
+            summary = textwrap.dedent(f'''
+            VIRUSTOTAL SUMMARY
+            --------------------------
+            Verdict: {str(result['status'])}
+            Categories: {result['categories']}
+            Confidence: {result['confidence']}
+            (Final URL: {result['last_final_url']})
+                            '''
+                            )
+            return summary, result
+        except Exception as e:
+            result = {}
+            result['name'] = 'vt'
+            result['source'] = 'VirusTotal'
+        
+            result['error'] = str(e)
             summary = textwrap.dedent(f'''
             VIRUSTOTAL SUMMARY
             --------------------
             ERROR: {result['error']}
-                         '''
-                         )
+                        '''
+                        )
             return summary, result
-        
-        unknown_count = output['engine_stats']['undetected']
-        clean_count = output['engine_stats']['harmless']
-        suspicious_count = output['engine_stats']['suspicious']
-        malicious_count = output['engine_stats']['malicious']
-        total_count = unknown_count + clean_count + suspicious_count + malicious_count
-
-        unknown_ratio = unknown_count / total_count
-        clean_ratio = clean_count / total_count
-        suspicious_ratio = suspicious_count / total_count
-        malicious_ratio = malicious_count / total_count
-
-        if malicious_ratio >= 0.1:
-            result['status'] = ThreatLevel.MALICIOUS
-            result['confidence'] = min(1.0, malicious_ratio*2)
-        elif malicious_ratio >= 0.05 or suspicious_ratio >= 0.2:
-            result['status'] = ThreatLevel.SUSPICIOUS
-            result['confidence'] = min(0.8, (malicious_ratio + suspicious_ratio)*2)
-        else:
-            result['status'] = ThreatLevel.CLEAN
-            result['confidence'] = max(0.1, 1.0 - malicious_ratio*10)
-
-        result['unknown_ratio'] = unknown_ratio
-        result['clean_ratio'] = clean_ratio
-        result['suspicious_ratio'] = suspicious_ratio
-        result['malicious_ratio'] = malicious_ratio
-
-        result['times_submitted'] = output.get('times_submitted')
-        result['internal_trust_score'] = output.get('internal_trust_score')
-        result['comm_votes_malicious'] = output['community_votes']['malicious']
-
-        result['categories'] = {}
-        for category in output['categories'].values():
-            norm = str(self.__norm_category(category))
-            if norm != None:
-                if norm in result['categories']:
-                    result['categories'][norm] += 1
-                else:
-                    result['categories'][norm] = 1
-
-        result['last_final_url'] = output['last_final_url']
-
-        summary = textwrap.dedent(f'''
-        VIRUSTOTAL SUMMARY
-        --------------------------
-        Verdict: {str(result['status'])}
-        Categories: {result['categories']}
-        Confidence: {result['confidence']}
-        (Final URL: {result['last_final_url']})
-                         '''
-                         )
-        return summary, result
     
     def check_gsb(self, url, path):
         output = self.__gsb_obj.run(url, path)
@@ -315,6 +325,9 @@ class CheckURL:
         return summary, result        
     
     def check_fox(self, url, path):
+        parsed = urlparse(url)._replace(query='')
+        url = urlunparse(parsed)
+
         output = self.__fox_obj.run(url, path)
 
         result = {}
@@ -388,7 +401,8 @@ class CheckURL:
         return summary, output
         
     def lookup(self, url, path):
-        os.makedirs(path, exist_ok=True)
+        if path is not None:
+            os.makedirs(path, exist_ok=True)
         results = {}
 
         #Blacklist Lookup
@@ -405,7 +419,7 @@ class CheckURL:
                 for future in as_completed(futures, timeout = 20):
                     summary, result = future.result()
                     results[result['name']] = result
-                    print(summary)
+                    # print(summary)
             except TimeoutError:
                 print('Search timed out')
 
@@ -415,7 +429,7 @@ class CheckURL:
 
         # Get DNS TTL
         results['dns'] = self.__dns_obj.dns_lookup(urlparse(url).hostname, path)
-        print(results['dns']) # TODO: print formatted dns output
+        # print(results['dns']) # TODO: print formatted dns output
         return summary, results
     
     def __get_feature_vector(self, url: str, lookup_result):
@@ -433,30 +447,33 @@ class CheckURL:
         features['domain_shannon_entropy'] = self.__get_shannon_entropy(parsed.hostname)
 
         # Domain WHOIS Features
-        features['domain_age_days'] = lookup_result['whois'].get('age_days')
+        features['domain_age_days'] = lookup_result['whois'].get('age_days', 0)
         try:
             features['domain_expiration_days'] = (lookup_result['whois']['expiration_date'].replace(tzinfo=None) - datetime.now()).days
         except:
-            features['domain_expiration_days'] = None
+            features['domain_expiration_days'] = 0
 
         # DNS Features
         features['ttl'] = lookup_result['dns']['ttl']
 
         # VT
-        features['vt_malicious_ratio'] = lookup_result['vt']['malicious_ratio']
-        features['vt_suspicious_ratio'] = lookup_result['vt']['suspicious_ratio']
-        features['vt_clean_ratio'] = lookup_result['vt']['clean_ratio']
-        features['vt_unknown_ratio'] = lookup_result['vt']['unknown_ratio']
-        features['vt_times_submitted'] = lookup_result['vt']['times_submitted']
-        features['vt_internal_trust_score'] = lookup_result['vt']['internal_trust_score']
-        features['comm_votes_malicious'] = lookup_result['vt']['comm_votes_malicious']
+        try:
+            features['vt_malicious_ratio'] = lookup_result['vt']['malicious_ratio']
+            features['vt_suspicious_ratio'] = lookup_result['vt']['suspicious_ratio']
+            features['vt_clean_ratio'] = lookup_result['vt']['clean_ratio']
+            features['vt_unknown_ratio'] = lookup_result['vt']['unknown_ratio']
+            features['vt_times_submitted'] = lookup_result['vt']['times_submitted']
+            features['vt_internal_trust_score'] = lookup_result['vt']['internal_trust_score']
+            features['comm_votes_malicious'] = lookup_result['vt']['comm_votes_malicious']
+        except Exception:
+            pass
 
         # Threatfox
-        features['fox_status'] = lookup_result['fox'].get('status')
-        features['fox_confidence'] = lookup_result['fox'].get('confidence')
+        features['fox_status'] = lookup_result['fox'].get('status', 0)
+        features['fox_confidence'] = lookup_result['fox'].get('confidence', 0)
 
         # GoogleSB
-        features['gsb_status'] = lookup_result['gsb'].get('status')
+        features['gsb_status'] = lookup_result['gsb'].get('status', 0)
 
         #compute skeleton and levenshtein distance
         skeleton = self.__get_skeleton(parsed.hostname)
@@ -467,20 +484,28 @@ class CheckURL:
 
         features['levenshtein_distance'] = Levenshtein.distance(parsed.hostname, skeleton)
 
+        # print(list(features.keys()))
+
         return features
 
-
     def run(self, url):
-        path = os.path.join(self.__report_path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
+        original_url = url
+        if self.__report_path is not None:
+            path = os.path.join(self.__report_path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
+        else:
+            path = None
         url = self.__normalize_url(url)
+        # print(url)
         summary, lookup_result = self.lookup(url, path)
-        print(lookup_result)
+        # print(lookup_result)
 
-        print(self.__get_feature_vector(url, lookup_result))
+        features = self.__get_feature_vector(url, lookup_result)
+        print(features)
+        return (features, original_url)
 
 if __name__ == '__main__':
-    object = CheckURL(report_path='./url_checks')
-    object.run('authentic-origin.shop')
+    object = CheckURL(report_path='')
+    print(object.check_vt('thedublinguide.com/', path = None))
 
 
 

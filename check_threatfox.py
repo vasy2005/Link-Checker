@@ -61,4 +61,4 @@ class CheckThreatFox:
     
 if __name__ == '__main__':
     object = CheckThreatFox()
-    print(object.run('https://salator.es/login/', './'))
+    print(object.run('thedublinguide.com/', './'))
