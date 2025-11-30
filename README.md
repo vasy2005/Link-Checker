@@ -13,7 +13,7 @@ mentioned above get saved in a .json.
 The indicators have been used to train a Random Forest Classifier ML that could output a probability of the link being harmful.
 (Note: due to the APIs having a limit on requests the training data used is not sufficient and needs to be improved)
 
-There is a class build for each of the 3 APIs:
+There is a class built for each of the 3 APIs:
 1. CheckGoogleSB
 2. CheckThreatFox
 3. CheckVirusTotal
