@@ -6,6 +6,7 @@ from concurrent.futures import as_completed
 from concurrent.futures import TimeoutError
 from main import CheckURL
 from enum import IntEnum
+import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -85,6 +86,7 @@ class RandomForest:
         df = pd.read_csv(self.__data_path, header=None, skiprows = 1, names = ['url', 'type'])
         df2['levenshtein_distance'] = 0
         X = df2.iloc[:, 2:len(feature_names)+2]
+        # print(X)
 
         mapping = {}
         mapping['benign'] = ThreatLevel.CLEAN
@@ -93,24 +95,19 @@ class RandomForest:
         mapping['defacement'] = ThreatLevel.SUSPICIOUS
         df['type'] = df['type'].map(mapping)
         y = df.iloc[:4000, 1].fillna(0).values.reshape(-1,1)
-        
-        # print(X)
-        # print('test')
-        # print(y)
-
-        ponderi_noi = {
-            1: 2,  # Pondere standard pentru Benign
-            2: 3,  # Pondere mică pentru Suspicios
-            3: 4   # Pondere moderată pentru Malign
-        }
-
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, stratify=y)
-        rf = RandomForestClassifier(class_weight=ponderi_noi)
+        rf = RandomForestClassifier(class_weight='balanced')
         rf.fit(X_train, y_train)
+        print(y)
+        print(X)
+        return
 
         y_pred = rf.predict(X_test)
         print(rf.score(X_test, y_test))
         print(classification_report(y_test, y_pred))
+
+        joblib.dump(rf, 'random_forest_url_model.joblib')
+
 
 if __name__ == '__main__':
     rf = RandomForest()

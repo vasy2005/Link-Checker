@@ -14,6 +14,8 @@ import string
 import ipaddress
 from datetime import datetime
 import re
+import pandas as pd
+import joblib
 
 from confusable_homoglyphs import confusables
 from ftfy import fix_text
@@ -419,7 +421,7 @@ class CheckURL:
                 for future in as_completed(futures, timeout = 20):
                     summary, result = future.result()
                     results[result['name']] = result
-                    # print(summary)
+                    print(summary)
             except TimeoutError:
                 print('Search timed out')
 
@@ -457,16 +459,13 @@ class CheckURL:
         features['ttl'] = lookup_result['dns']['ttl']
 
         # VT
-        try:
-            features['vt_malicious_ratio'] = lookup_result['vt']['malicious_ratio']
-            features['vt_suspicious_ratio'] = lookup_result['vt']['suspicious_ratio']
-            features['vt_clean_ratio'] = lookup_result['vt']['clean_ratio']
-            features['vt_unknown_ratio'] = lookup_result['vt']['unknown_ratio']
-            features['vt_times_submitted'] = lookup_result['vt']['times_submitted']
-            features['vt_internal_trust_score'] = lookup_result['vt']['internal_trust_score']
-            features['comm_votes_malicious'] = lookup_result['vt']['comm_votes_malicious']
-        except Exception:
-            pass
+        features['vt_malicious_ratio'] = lookup_result['vt'].get('malicious_ratio', 0)
+        features['vt_suspicious_ratio'] = lookup_result['vt'].get('suspicious_ratio', 0)
+        features['vt_clean_ratio'] = lookup_result['vt'].get('clean_ratio', 0)
+        features['vt_unknown_ratio'] = lookup_result['vt'].get('unknown_ratio', 0)
+        features['vt_times_submitted'] = lookup_result['vt'].get('times_submitted', 0)
+        features['vt_internal_trust_score'] = lookup_result['vt'].get('internal_trust_score', 0)
+        features['comm_votes_malicious'] = lookup_result['vt'].get('comm_votes_malicious', 0)
 
         # Threatfox
         features['fox_status'] = lookup_result['fox'].get('status', 0)
@@ -489,7 +488,6 @@ class CheckURL:
         return features
 
     def run(self, url):
-        original_url = url
         if self.__report_path is not None:
             path = os.path.join(self.__report_path, f'{math.floor(time.time())}_{hashlib.md5(url.encode()).hexdigest()}')
         else:
@@ -500,12 +498,24 @@ class CheckURL:
         # print(lookup_result)
 
         features = self.__get_feature_vector(url, lookup_result)
-        print(features)
-        return (features, original_url)
+        
+        model = joblib.load('random_forest_url_model.joblib')
+
+        df = pd.DataFrame(features, index=[0])
+        probs = model.predict_proba(df)
+        prob_clasa1 = probs[0][0]
+        prob_clasa2 = probs[0][1]
+        prob_clasa3 = probs[0][2]
+
+        print(f"Probability of the URL being CLEAN: {prob_clasa1:.2f}")
+        print(f"Probability of the URL being SUSPICIOUS: {prob_clasa2:.2f}")
+        print(f"Probability of the URL being MALICIOUS: {prob_clasa3:.2f}")
+
+        return features
 
 if __name__ == '__main__':
-    object = CheckURL(report_path='')
-    print(object.check_vt('thedublinguide.com/', path = None))
+    object = CheckURL(report_path='./reports')
+    object.run('https://gemini.google.com/app/e2ec3a3bd1e597d7')
 
 
 

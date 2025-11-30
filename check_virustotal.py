@@ -14,7 +14,7 @@ class CheckVirusTotal:
     def __init__(self):
         load_dotenv()
         self.__api_key = os.getenv('VIRUSTOTAL_API_KEY')
-        print(self.__api_key)
+        # print(self.__api_key)
 
     def __into_dict(self, object):
         if isinstance(object, WhistleBlowerDict) or isinstance(object, dict):
